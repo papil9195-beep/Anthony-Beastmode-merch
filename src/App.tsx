@@ -19,6 +19,7 @@ type OrderDraft = {
 }
 const STORE_EMAIL = 'abeastmode803@gmail.com'
 const CASH_APP_TAG = '$shea7132022'
+const MAX_RECEIPT_SIZE = 4 * 1024 * 1024
 const money = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
 
 const orderEmailLink = (order: OrderDraft) => {
@@ -60,6 +61,8 @@ function App() {
   const [orderDraft, setOrderDraft] = useState<OrderDraft | null>(null)
   const [paymentReceipt, setPaymentReceipt] = useState<File | null>(null)
   const [cashAppDetailsOpen, setCashAppDetailsOpen] = useState(false)
+  const [receiptSubmitted, setReceiptSubmitted] = useState(false)
+  const [receiptSubmitting, setReceiptSubmitting] = useState(false)
   const [receiptError, setReceiptError] = useState('')
   const [newsletterEmail, setNewsletterEmail] = useState('')
   const [newsletterDone, setNewsletterDone] = useState(false)
@@ -108,13 +111,14 @@ function App() {
     setMobileMenuOpen(false)
     document.getElementById('collection')?.scrollIntoView({ behavior: 'smooth' })
   }
-  const startCheckout = () => { setDrawerOpen(false); setOrderDraft(null); setPaymentReceipt(null); setCashAppDetailsOpen(false); setReceiptError(''); setCheckoutOpen(true) }
+  const startCheckout = () => { setDrawerOpen(false); setOrderDraft(null); setPaymentReceipt(null); setCashAppDetailsOpen(false); setReceiptSubmitted(false); setReceiptSubmitting(false); setReceiptError(''); setCheckoutOpen(true) }
   const submitCheckout = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const orderNumber = `AB-${Date.now().toString().slice(-6)}`
     setPaymentReceipt(null)
     setCashAppDetailsOpen(false)
+    setReceiptSubmitted(false)
     setReceiptError('')
     setOrderDraft({
       orderNumber,
@@ -139,13 +143,30 @@ function App() {
       setReceiptError('Choose a receipt image file.')
       return
     }
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_RECEIPT_SIZE) {
       input.value = ''
       setPaymentReceipt(null)
-      setReceiptError('The receipt image must be 10 MB or smaller.')
+      setReceiptError('The receipt image must be 4 MB or smaller.')
       return
     }
     setPaymentReceipt(file)
+  }
+  const submitPaymentReceipt = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!paymentReceipt || !orderDraft || receiptSubmitting) return
+    setReceiptError('')
+    setReceiptSubmitting(true)
+    try {
+      const response = await fetch('/api/receipt', { method: 'POST', body: new FormData(event.currentTarget) })
+      const result = await response.json().catch(() => null) as { success?: boolean; error?: string } | null
+      if (!response.ok || result?.success !== true) throw new Error(result?.error || 'The receipt could not be sent. Please try again.')
+      setReceiptSubmitted(true)
+      setPaymentReceipt(null)
+    } catch (error) {
+      setReceiptError(error instanceof Error ? error.message : 'The receipt could not be sent. Please try again.')
+    } finally {
+      setReceiptSubmitting(false)
+    }
   }
   const submitNewsletter = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (newsletterEmail.trim()) setNewsletterDone(true) }
 
@@ -238,7 +259,15 @@ function App() {
         <div className="overlay modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && setCheckoutOpen(false)}>
           <section className="checkout-modal" role="dialog" aria-modal="true" aria-label="Checkout">
             <button className="modal-close icon-button" onClick={() => setCheckoutOpen(false)} aria-label="Close checkout"><X size={20} /></button>
-            {orderDraft ? (
+            {receiptSubmitted ? (
+              <div className="order-success">
+                <div className="success-mark"><Check size={27} /></div>
+                <span className="eyebrow">{orderDraft ? `ORDER ${orderDraft.orderNumber}` : 'CASH APP RECEIPT'}</span>
+                <h2>Receipt<br /><em>submitted.</em></h2>
+                <p>Your receipt and order details were emailed to {STORE_EMAIL}. We’ll review the payment and follow up by email.</p>
+                <button className="button button-dark checkout-button" onClick={() => setCheckoutOpen(false)}>Back to the store <ArrowRight size={16} /></button>
+              </div>
+            ) : orderDraft ? (
               <div className="order-success">
                 <div className="success-mark"><Check size={27} /></div>
                 <span className="eyebrow">ORDER {orderDraft.orderNumber}</span>
@@ -257,7 +286,8 @@ function App() {
                 </button>
                 <div className="receipt-step" id="cash-app-payment-details" hidden={!cashAppDetailsOpen}>
                     <p>Send <strong>{money(orderDraft.total)}</strong> to <strong>{CASH_APP_TAG}</strong> in Cash App. Use {orderDraft.orderNumber} as the payment note.</p>
-                    <form className="checkout-form receipt-form" action={'https://formsubmit.co/' + STORE_EMAIL} method="POST" encType="multipart/form-data">
+                    <form className="checkout-form receipt-form" method="POST" encType="multipart/form-data" onSubmit={submitPaymentReceipt}>
+                      <label className="receipt-honeypot" aria-hidden="true">Leave this field blank<input name="_honeypot" tabIndex={-1} autoComplete="off" /></label>
                       <input type="hidden" name="_subject" value={'Payment receipt for ' + orderDraft.orderNumber} />
                       <input type="hidden" name="_replyto" value={orderDraft.email} />
                       <input type="hidden" name="Order number" value={orderDraft.orderNumber} />
@@ -279,9 +309,9 @@ function App() {
                       </label>
                       {paymentReceipt && <p className="receipt-file">Selected receipt: {paymentReceipt.name}</p>}
                       {receiptError && <p className="receipt-error" role="alert">{receiptError}</p>}
-                      <p className="receipt-note">Your receipt image and order details will be emailed through FormSubmit to {STORE_EMAIL} when you tap Payment completed.</p>
-                      <button className="button button-dark checkout-button" disabled={!paymentReceipt}>
-                        Payment completed <ArrowRight size={16} />
+                      <p className="receipt-note">Your receipt will be securely sent to {STORE_EMAIL}. Images must be 4 MB or smaller.</p>
+                      <button className="button button-dark checkout-button" disabled={!paymentReceipt || receiptSubmitting}>
+                        {receiptSubmitting ? 'Sending receipt…' : 'Payment completed'} <ArrowRight size={16} />
                       </button>
                     </form>
                 </div>

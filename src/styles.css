@@ -222,6 +222,7 @@ h1 em, h2 em { color: var(--accent); font-weight: 500; }
 .receipt-step { width: 100%; margin-top: 17px; padding-top: 15px; border-top: 1px solid var(--line); }
 .receipt-step > p { margin: 0 0 13px; color: #b1aaa6; font-size: 9px; line-height: 1.6; }
 .receipt-form { width: 100%; }
+.receipt-honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 .receipt-file { margin: -4px 0 0; color: #b1aaa6; font-size: 9px; overflow-wrap: anywhere; }
 .receipt-note, .receipt-error { margin: 0; color: #a39b97; font-size: 9px; line-height: 1.6; }
 .receipt-error { color: #ff8c83; }
